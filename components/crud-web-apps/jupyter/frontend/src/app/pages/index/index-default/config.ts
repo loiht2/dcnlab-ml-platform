@@ -19,11 +19,30 @@ export function getConfigForUser(UserisAdmin: boolean): TableConfig {
   if (UserisAdmin) {
     return defaultConfig;
   }
+  // return {
+  //   ...defaultConfig,
+  //   columns: defaultConfig.columns!.filter(
+  //     col => allowed.includes(col.matColumnDef)
+  //   ),
+  // };
+    const cols = defaultConfig.columns!
+    .filter(col => allowed.includes(col.matColumnDef))
+    .map(col => {
+      if (col.matColumnDef === 'name') {
+        return {
+          ...col,
+          value: new PropertyValue({
+            field: 'name',
+            truncate: true,
+          }),
+        };
+      }
+      return col;
+    });
+
   return {
     ...defaultConfig,
-    columns: defaultConfig.columns!.filter(
-      col => allowed.includes(col.matColumnDef)
-    ),
+    columns: cols,
   };
 }
 // --- Config for the Resource Table ---

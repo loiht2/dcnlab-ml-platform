@@ -244,7 +244,6 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
             // This case is for non-identity networks, that have no namespaces
             this._setRegistrationFlow(true);
         }
-
         if (this.userrole !== 'admin') {
             const defaultNs =
             this.queryParams.ns ||
@@ -271,7 +270,6 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
                 return;
             }
         }
-
         const ownedNamespaces = [];
         const editNamespaces = [];
         const viewNamespaces = [];
@@ -384,7 +382,9 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
         }
         this._enableAllNamespaceOption();
     }
-
+    /* This function helps to whenever namespace changed,
+    the application save the users' option, and change route
+     to load correct content for that namespace*/
     _namespaceChanged(namespace) {
         // update namespaced menu item when namespace is changed
         // by namespace selector
@@ -441,8 +441,8 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
      * Builds the new iframeSrc string based on the subroute path, current
      * hash fragment, and the query string parameters other than ns.
      */
-    _setIframeSrc() {
-        const iframeUrl = new URL(this.subRouteData.path,
+    // This function helps to load the iframe if you
+    //  move the sub website in your application. <loi>
     _setIframeSrc() {
         const iframeUrl = new URL(this.subRouteData.path,
             window.location.origin);
@@ -573,10 +573,10 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
      * @param {Event} responseEvent AJAX-response
      */
 
+    /*
+    This function helps to build namespace list,
     which includes "All Namespaces" when enabled for user pick.
     */
-    _enableAllNamespaceOption(iframeSrc) {
-        if (!iframeSrc) {
     _enableAllNamespaceOption(iframeSrc) {
         if (!iframeSrc) {
             iframeSrc = this.iframeSrc;
