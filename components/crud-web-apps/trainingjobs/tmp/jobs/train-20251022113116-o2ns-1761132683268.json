@@ -1,0 +1,44 @@
+{
+  "jobName": "train-20251022113116-o2ns",
+  "priority": 500,
+  "algorithm": {
+    "source": "builtin",
+    "algorithmName": "xgboost",
+    "enableMetrics": true
+  },
+  "resources": {
+    "instanceResources": {
+      "cpuCores": 4,
+      "memoryGiB": 16,
+      "gpuCount": 0
+    },
+    "instanceCount": 1,
+    "volumeSizeGB": 50,
+    "distributed": {
+      "enabled": false,
+      "strategy": "mpi"
+    }
+  },
+  "stoppingCondition": {
+    "maxRuntimeSeconds": 14400
+  },
+  "inputDataConfig": [
+    {
+      "id": "7bae61e7-fbc7-4802-a072-d9ae1cb866f2",
+      "channelName": "train",
+      "sourceType": "object-storage",
+      "storageProvider": "minio",
+      "endpoint": "https://minio.local",
+      "bucket": "storage://input",
+      "prefix": "datasets/default/",
+      "region": "us-east-1",
+      "contentType": "",
+      "compressionType": "None",
+      "distribution": "FullyReplicated",
+      "recordWrapperType": "None"
+    }
+  ],
+  "outputDataConfig": {
+    "artifactUri": "storage://output/artifacts/"
+  }
+}
