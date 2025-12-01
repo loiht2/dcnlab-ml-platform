@@ -37,7 +37,10 @@ export class FormComponent implements OnInit, OnDestroy {
       name: ['', [Validators.required]],
       namespace: ['', [Validators.required]],
       storage: ['object_store', [Validators.required]],
-      objectStoreLink: ['', [Validators.required]],
+      storageProvider: ['minio', [Validators.required]],
+      bucket: ['', [Validators.required]],
+      prefix: ['', []],
+      endpoint: ['minio-system', [Validators.required]],
       pvcName: ['', [Validators.nullValidator]],
       pvcMountPath: ['', [Validators.nullValidator]],
       configurations: [[], []],
@@ -69,7 +72,10 @@ export class FormComponent implements OnInit, OnDestroy {
             this.pvcNames = pvcs;
           });
 
-          this.formCtrl.removeControl('objectStoreLink');
+          this.formCtrl.removeControl('storageProvider');
+          this.formCtrl.removeControl('bucket');
+          this.formCtrl.removeControl('prefix');
+          this.formCtrl.removeControl('endpoint');
           this.formCtrl.addControl(
             'pvcName',
             new FormControl('', [Validators.required]),
@@ -78,9 +84,32 @@ export class FormComponent implements OnInit, OnDestroy {
         if (stType === 'object_store') {
           this.formCtrl.removeControl('pvcName');
           this.formCtrl.addControl(
-            'objectStoreLink',
+            'storageProvider',
+            new FormControl('minio', [Validators.required]),
+          );
+          this.formCtrl.addControl(
+            'bucket',
             new FormControl('', [Validators.required]),
           );
+          this.formCtrl.addControl(
+            'prefix',
+            new FormControl('', []),
+          );
+          this.formCtrl.addControl(
+            'endpoint',
+            new FormControl('minio-system', [Validators.required]),
+          );
+        }
+      }),
+    );
+
+    // Handle provider change to update endpoint
+    this.subs.add(
+      this.formCtrl.get('storageProvider')?.valueChanges.subscribe(provider => {
+        if (provider === 'minio') {
+          this.formCtrl.get('endpoint')?.setValue('minio-system');
+        } else {
+          this.formCtrl.get('endpoint')?.setValue('');
         }
       }),
     );
@@ -92,24 +121,38 @@ export class FormComponent implements OnInit, OnDestroy {
 
   public onSubmit() {
     let logspath: string;
+    const tensorboard: TensorboardPostObject = {
+      name: this.formCtrl.get('name').value,
+      logspath: '',
+      configurations: this.formCtrl.get('configurations').value,
+    };
+
     if (this.storageType === 'pvc') {
       logspath =
         'pvc://' +
         this.formCtrl.get('pvcName').value +
         '/' +
         this.formCtrl.get('pvcMountPath').value;
+      tensorboard.logspath = logspath;
     } else {
-      logspath = this.formCtrl.get('objectStoreLink').value;
-    }
+      // For object store, construct s3:// path and pass additional fields
+      const bucket = this.formCtrl.get('bucket').value;
+      const prefix = this.formCtrl.get('prefix').value;
+      const storageProvider = this.formCtrl.get('storageProvider').value;
+      const endpoint = this.formCtrl.get('endpoint').value;
 
-    const tensorboard: TensorboardPostObject = JSON.parse(
-      JSON.stringify({
-        name: this.formCtrl.get('name').value,
-        namespace: this.formCtrl.get('namespace').value,
-        logspath,
-        configurations: this.formCtrl.get('configurations').value,
-      }),
-    );
+      // Construct logspath as s3://bucket/prefix
+      logspath = `s3://${bucket}`;
+      if (prefix) {
+        logspath += `/${prefix}`;
+      }
+
+      tensorboard.logspath = logspath;
+      tensorboard.storageProvider = storageProvider;
+      tensorboard.bucket = bucket;
+      tensorboard.prefix = prefix || '';
+      tensorboard.endpoint = endpoint;
+    }
 
     this.blockSubmit = true;
 

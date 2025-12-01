@@ -63,14 +63,49 @@
       />
     </mat-form-field>
 
-    <mat-form-field
-      appearance="outline"
-      class="wide"
-      *ngIf="formCtrl.get('storage').value === 'object_store'"
-    >
-      <mat-label data-cy-form-input-label i18n>Object Store Link</mat-label>
-      <input matInput formControlName="objectStoreLink" type="url" />
-    </mat-form-field>
+    <!-- Object Store Configuration -->
+    <div *ngIf="formCtrl.get('storage').value === 'object_store'" class="object-store-config">
+      <mat-form-field appearance="outline" class="wide">
+        <mat-label data-cy-form-input-provider i18n>Provider</mat-label>
+        <mat-select formControlName="storageProvider">
+          <mat-option value="minio">MinIO</mat-option>
+          <mat-option value="s3">AWS S3</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <div class="grid-container">
+        <mat-form-field appearance="outline" class="grid-item">
+          <mat-label data-cy-form-input-bucket i18n>Bucket</mat-label>
+          <input
+            matInput
+            formControlName="bucket"
+            placeholder="my-bucket"
+            i18n-placeholder
+          />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="grid-item">
+          <mat-label data-cy-form-input-prefix i18n>Prefix / Path</mat-label>
+          <input
+            matInput
+            formControlName="prefix"
+            placeholder="output/path"
+            i18n-placeholder
+          />
+        </mat-form-field>
+      </div>
+
+      <mat-form-field appearance="outline" class="wide">
+        <mat-label data-cy-form-input-endpoint i18n>Endpoint</mat-label>
+        <input
+          matInput
+          formControlName="endpoint"
+          placeholder="minio-system"
+          i18n-placeholder
+          [readonly]="formCtrl.get('storageProvider').value === 'minio'"
+        />
+      </mat-form-field>
+    </div>
 
     <app-form-configurations [parentForm]="formCtrl"></app-form-configurations>
 

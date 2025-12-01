@@ -39,6 +39,10 @@ export interface TensorboardPostObject {
   name: string;
   logspath: string;
   configurations: PodDefault[];
+  storageProvider?: string;
+  bucket?: string;
+  prefix?: string;
+  endpoint?: string;
 }
 
 export interface PodDefault {

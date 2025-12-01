@@ -36,11 +36,38 @@ def get_tensorboard_dict(namespace, body):
     if labels:
         metadata["labels"] = labels
 
+    spec = {"logspath": body["logspath"]}
+    
+    # If endpoint is provided (for object storage), add AWS_ENDPOINT_URL env var
+    if "endpoint" in body and body["endpoint"]:
+        endpoint_value = body["endpoint"]
+        
+        # Convert display value 'minio-system' to full URL
+        if endpoint_value == "minio-system":
+            endpoint_value = "http://minio.minio-system.svc.cluster.local:9000"
+        
+        # Add container spec with environment variable
+        spec["podTemplateSpec"] = {
+            "spec": {
+                "containers": [
+                    {
+                        "name": "tensorboard",
+                        "env": [
+                            {
+                                "name": "AWS_ENDPOINT_URL",
+                                "value": endpoint_value
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
     tensorboard = {
         "apiVersion": "tensorboard.kubeflow.org/v1alpha1",
         "kind": "Tensorboard",
         "metadata": metadata,
-        "spec": {"logspath": body["logspath"]},
+        "spec": spec,
     }
 
     return tensorboard

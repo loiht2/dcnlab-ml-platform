@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
       - name: tensorboards-web-app
-        image: ghcr.io/kubeflow/kubeflow/tensorboards-web-app
+        image: loihoangthanh1411/tensorboards-web-app:latest
         ports:
         - containerPort: 5000
         env:
