@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -28,19 +30,47 @@ type MinIOConfig struct {
 
 // NewMinIOClientFromK8s creates a MinIO client using credentials from Kubernetes secret
 func NewMinIOClientFromK8s(ctx context.Context, k8sClient *kubernetes.Clientset, namespace string) (*MinIOClient, error) {
-	// Get MinIO credentials from secret
-	secret, err := k8sClient.CoreV1().Secrets(namespace).Get(ctx, "minio-secret", metav1.GetOptions{})
+	// Try multiple secret names in order of preference
+	secretNames := []string{"minio-secret", "mlpipeline-minio-artifact"}
+	var secret *corev1.Secret
+	var err error
+
+	for _, secretName := range secretNames {
+		secret, err = k8sClient.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
+		if err == nil {
+			log.Printf("Found MinIO secret: %s in namespace %s", secretName, namespace)
+			break
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get minio-secret: %w", err)
+		return nil, fmt.Errorf("failed to get MinIO secret (tried: %v): %w", secretNames, err)
 	}
 
+	// Support both naming conventions:
+	// - Standard: endpoint, accesskey, secretkey
+	// - AWS-style: S3_ENDPOINT, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 	endpoint := string(secret.Data["endpoint"])
+	if endpoint == "" {
+		endpoint = string(secret.Data["S3_ENDPOINT"])
+	}
+	
 	accessKey := string(secret.Data["accesskey"])
+	if accessKey == "" {
+		accessKey = string(secret.Data["AWS_ACCESS_KEY_ID"])
+	}
+	
 	secretKey := string(secret.Data["secretkey"])
+	if secretKey == "" {
+		secretKey = string(secret.Data["AWS_SECRET_ACCESS_KEY"])
+	}
 
 	if endpoint == "" || accessKey == "" || secretKey == "" {
-		return nil, fmt.Errorf("minio-secret is missing required fields (endpoint, accesskey, secretkey)")
+		return nil, fmt.Errorf("MinIO secret is missing required fields (need endpoint or accesskey/secretkey)")
 	}
+
+	// Remove http:// or https:// prefix if present (MinIO client doesn't want it)
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = strings.TrimPrefix(endpoint, "https://")
 
 	// Initialize MinIO client
 	minioClient, err := minio.New(endpoint, &minio.Options{

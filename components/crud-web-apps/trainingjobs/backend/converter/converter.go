@@ -14,8 +14,8 @@ import (
 
 const (
 	DefaultRayVersion      = "2.46.0"
-	DefaultHeadImage       = "kiepdoden123/iris-training-ray:v1.2"
-	DefaultWorkerImage     = "kiepdoden123/iris-training-ray:v1.2"
+	DefaultHeadImage       = "kiepdoden123/iris-training-ray:latest"
+	DefaultWorkerImage     = "kiepdoden123/iris-training-ray:latest"
 	DefaultEntrypoint      = "python /home/ray/xgboost_train.py"
 	DefaultStoragePath     = "/home/ray/result-storage"
 	DefaultLabelColumn     = "target"
@@ -205,6 +205,7 @@ func (c *Converter) buildXGBoostConfig(xgb *models.XGBoostHyperparameters) map[s
 	// Basic parameters
 	config["booster"] = xgb.Booster
 	config["verbosity"] = xgb.Verbosity
+	config["nthread"] = xgb.Nthread
 	
 	// Learning parameters
 	config["eta"] = xgb.Eta
@@ -222,11 +223,7 @@ func (c *Converter) buildXGBoostConfig(xgb *models.XGBoostHyperparameters) map[s
 	config["tree_method"] = xgb.TreeMethod
 	config["sketch_eps"] = xgb.SketchEps
 	config["scale_pos_weight"] = xgb.ScalePosWeight
-	
-	// Updater (only if not "auto")
-	if xgb.Updater != "" && xgb.Updater != "auto" {
-		config["updater"] = xgb.Updater
-	}
+	config["updater"] = xgb.Updater
 	
 	// Advanced parameters
 	config["dsplit"] = xgb.Dsplit
@@ -455,4 +452,48 @@ func (c *Converter) CreatePVC(req *models.TrainingJobRequest, jobID string) *cor
 	}
 	
 	return pvc
+}
+
+// CreateTensorboard creates a Tensorboard resource for the training job
+func (c *Converter) CreateTensorboard(req *models.TrainingJobRequest, jobName string) map[string]interface{} {
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+	
+	// Extract output configuration
+	var s3Endpoint, bucket, path string
+	if req.Output != nil {
+		s3Endpoint = req.Output.Endpoint
+		bucket = req.Output.Bucket
+		path = req.Output.Path
+	} else {
+		// Fallback to defaults
+		s3Endpoint = "http://minio.minio-system.svc.cluster.local:9000"
+		bucket = namespace
+		path = fmt.Sprintf("output/%s", jobName)
+	}
+	
+	// Build logspath as s3://<bucket>/<path>
+	logspath := fmt.Sprintf("s3://%s/%s", bucket, path)
+	
+	tensorboard := map[string]interface{}{
+		"apiVersion": "tensorboard.kubeflow.org/v1alpha1",
+		"kind":       "Tensorboard",
+		"metadata": map[string]interface{}{
+			"name":      fmt.Sprintf("%s-tb", jobName),
+			"namespace": namespace,
+			"labels": map[string]string{
+				"tensorboards": "true",
+			},
+			"annotations": map[string]string{
+				"s3-endpoint": s3Endpoint,
+			},
+		},
+		"spec": map[string]interface{}{
+			"logspath": logspath,
+		},
+	}
+	
+	return tensorboard
 }

@@ -70,6 +70,36 @@ func (c *Client) CreateRayJob(ctx context.Context, rayJob map[string]interface{}
 	return nil
 }
 
+// CreateTensorboard creates a Tensorboard resource
+func (c *Client) CreateTensorboard(ctx context.Context, tensorboard map[string]interface{}) error {
+	// Convert map to unstructured
+	unstructuredObj := &unstructured.Unstructured{
+		Object: tensorboard,
+	}
+
+	namespace := unstructuredObj.GetNamespace()
+	if namespace == "" {
+		namespace = "default"
+		unstructuredObj.SetNamespace(namespace)
+	}
+
+	// Define Tensorboard GroupVersionResource
+	gvr := schema.GroupVersionResource{
+		Group:    "tensorboard.kubeflow.org",
+		Version:  "v1alpha1",
+		Resource: "tensorboards",
+	}
+
+	// Create the Tensorboard
+	_, err := c.dynamicClient.Resource(gvr).Namespace(namespace).Create(ctx, unstructuredObj, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create Tensorboard: %w", err)
+	}
+
+	log.Printf("Created Tensorboard %s/%s", namespace, unstructuredObj.GetName())
+	return nil
+}
+
 // GetJobStatus retrieves job status
 func (c *Client) GetJobStatus(ctx context.Context, name, namespace string) (*batchv1.Job, error) {
 	job, err := c.clientset.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})

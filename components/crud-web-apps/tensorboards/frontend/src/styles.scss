@@ -1,3 +1,13 @@
 /* You can add global styles to this file, and also import other style files */
 @import '../node_modules/kubeflow/styles/styles.scss';
 @import '../node_modules/kubeflow/styles/fonts.scss';
+
+/* Denser blue for buttons only */
+.mat-primary .mat-button, .mat-primary .mat-raised-button,
+.mat-raised-button.mat-primary {
+  background-color: #0d47a1 !important; /* Dense deep blue for buttons */
+}
+
+.mat-raised-button.mat-primary:hover {
+  background-color: #0a3d91 !important; /* Even denser on hover */
+}

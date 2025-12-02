@@ -9,6 +9,158 @@ This web app is responsible for allowing the user to manipulate Tensorboard inst
 ![Create Form](https://github.com/kandrio98/kubeflow/blob/pictures-branch/components/crud-web-apps/tensorboards/pictures/create_tensorboard_form.png?raw=true)
 - You can create, delete, list Tensorboard CRs and connect to Tensorboard servers to visualize your logs
 ![Delete Tensorboard](https://github.com/kandrio98/kubeflow/blob/pictures-branch/components/crud-web-apps/tensorboards/pictures/delete_tensorboard_dialog.png?raw=true)
+
+## Recent Modifications (December 2025)
+
+### Object Store Configuration Enhancement
+
+The Tensorboard web app has been enhanced to support detailed S3-compatible object store configuration, specifically for MinIO integration.
+
+#### Key Changes
+
+1. **Enhanced Form Interface**: The creation form now provides granular object store configuration fields instead of a single "Object Store Link" input:
+   - **Provider**: Dropdown to select storage provider (MinIO or AWS S3)
+   - **Bucket**: Input field for S3 bucket name
+   - **Prefix/Path**: Input field for object path within the bucket
+   - **Endpoint**: Endpoint URL (auto-populated for MinIO, editable for AWS S3)
+
+2. **S3 Path Construction**: The backend automatically constructs proper S3 paths in the format `s3://bucket/prefix` from the user-provided bucket and prefix values.
+
+3. **PodDefault Integration**: Added support for automatic credential injection via Kubernetes PodDefaults:
+   - Tensorboard CRs are created with the label `tensorboards: "true"`
+   - PodDefaults with matching selector automatically inject MinIO/S3 credentials into Tensorboard pods
+   - Injected environment variables: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`
+
+4. **MinIO Endpoint Annotation**: S3 object store configurations include an `s3-endpoint` annotation on the Tensorboard CR metadata for MinIO endpoint tracking.
+
+#### Prerequisites for MinIO Integration
+
+1. **MinIO Service**: Ensure MinIO is deployed and accessible (e.g., `minio.minio-system.svc.cluster.local:9000`)
+
+2. **Credentials Secret**: Create a Kubernetes secret containing MinIO credentials:
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: minio-secret
+     namespace: <user-namespace>
+   type: Opaque
+   stringData:
+     AWS_ACCESS_KEY_ID: "<minio-access-key>"
+     AWS_SECRET_ACCESS_KEY: "<minio-secret-key>"
+     S3_ENDPOINT: "http://minio.minio-system.svc.cluster.local:9000"
+   ```
+
+3. **PodDefault Configuration**: Create a PodDefault to inject credentials:
+   ```yaml
+   apiVersion: kubeflow.org/v1alpha1
+   kind: PodDefault
+   metadata:
+     name: add-minio-secret
+     namespace: <user-namespace>
+   spec:
+     desc: Add MinIO credentials
+     selector:
+       matchLabels:
+         tensorboards: "true"
+     env:
+     - name: AWS_ACCESS_KEY_ID
+       valueFrom:
+         secretKeyRef:
+           name: minio-secret
+           key: AWS_ACCESS_KEY_ID
+     - name: AWS_SECRET_ACCESS_KEY
+       valueFrom:
+         secretKeyRef:
+           name: minio-secret
+           key: AWS_SECRET_ACCESS_KEY
+     - name: S3_ENDPOINT
+       valueFrom:
+         secretKeyRef:
+           name: minio-secret
+           key: S3_ENDPOINT
+   ```
+
+#### Usage Example
+
+1. Navigate to the Tensorboards web app in Kubeflow
+2. Click "New Tensorboard"
+3. Fill in the form:
+   - Name: `my-tensorboard`
+   - Storage: Select "Object Store"
+   - Provider: Select "MinIO"
+   - Bucket: `my-bucket`
+   - Prefix/Path: `output/logs`
+   - Endpoint: `minio-system` (auto-filled)
+4. The system will create a Tensorboard with:
+   - logspath: `s3://my-bucket/output/logs`
+   - Label: `tensorboards: "true"`
+   - Annotation: `s3-endpoint: "http://minio.minio-system.svc.cluster.local:9000"`
+5. The PodDefault automatically injects MinIO credentials into the Tensorboard pod
+6. TensorBoard can now access logs from MinIO S3 storage
+
+#### Troubleshooting: RBAC Access Denied Error
+
+**Problem**: When accessing a Tensorboard through the browser, you receive an HTTP 403 error with the message "RBAC: access denied".
+
+**Root Cause**: The Tensorboard pod is attempting to access MinIO S3 storage but lacks the necessary AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`). Without these credentials, the Tensorboard cannot authenticate with MinIO, resulting in access denied errors.
+
+**Why This Happens**:
+1. **Missing Label on Tensorboard CR**: If the Tensorboard custom resource (CR) doesn't have the label `tensorboards: "true"`, the PodDefault admission webhook cannot match it
+2. **PodDefault Not Configured**: If no PodDefault exists with a selector matching `tensorboards: "true"`, credentials won't be injected
+3. **Wrong Secret Name or Keys**: If the PodDefault references a secret that doesn't exist or uses incorrect keys
+4. **Namespace Mismatch**: The secret and PodDefault must exist in the same namespace as the Tensorboard
+
+**How the Fix Works**:
+The modifications ensure that:
+1. Every Tensorboard CR created through the web app automatically gets the label `tensorboards: "true"`
+2. When the Tensorboard controller creates a pod from the CR, the PodDefault admission webhook detects the label
+3. The webhook injects the MinIO credentials from the secret into the pod's environment variables
+4. TensorBoard can now authenticate with MinIO and access the S3 bucket
+
+**Verification Steps**:
+```bash
+# 1. Check if the Tensorboard CR has the correct label
+kubectl get tensorboard <name> -n <namespace> -o jsonpath='{.metadata.labels}'
+# Expected output should include: {"tensorboards":"true"}
+
+# 2. Check if the pod has injected environment variables
+kubectl get pod -l app=<tensorboard-name> -n <namespace> \
+  -o jsonpath='{.items[0].spec.containers[?(@.name=="tensorboard")].env}' | jq .
+# Expected output should show: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT
+
+# 3. Check if the secret exists
+kubectl get secret minio-secret -n <namespace>
+
+# 4. Check if the PodDefault exists and has correct selector
+kubectl get poddefault add-minio-secret -n <namespace> -o yaml
+# Verify selector.matchLabels contains: tensorboards: "true"
+```
+
+**Manual Fix for Existing Tensorboards**:
+If you have existing Tensorboards created before this modification:
+```bash
+# Add the label to existing Tensorboard CR
+kubectl label tensorboard <name> -n <namespace> tensorboards=true
+
+# Delete the pod to force recreation with injected credentials
+kubectl delete pod -l app=<tensorboard-name> -n <namespace>
+
+# The Tensorboard controller will recreate the pod, and the PodDefault will inject credentials
+```
+
+#### Docker Image
+
+The updated web app is available at:
+```
+loihoangthanh1411/tensorboards-web-app:latest
+```
+
+To build locally:
+```bash
+cd components/crud-web-apps
+docker build -t tensorboards-web-app:latest -f tensorboards/Dockerfile .
+```
 ## Development
 
 Requirements:

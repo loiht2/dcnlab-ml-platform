@@ -1,48 +1,51 @@
 # ML Platform Training Job Backend
 
-Go backend service for ML Platform that integrates with Karmada for multi-cluster Kubernetes resource management.
+Go backend service for ML Platform that converts training job configurations to Kubernetes RayJob resources with Tensorboard integration.
+
+## Version
+
+**v2.1.0** - Current stable release
 
 ## Overview
 
-This backend service receives REST API requests from the frontend, converts user input forms into Kubernetes resources (Jobs, RayJobs, etc.), and deploys them to member clusters through Karmada's control plane with PropagationPolicy. It also provides proxy access to member cluster resources through Karmada's aggregated API server.
+This backend service:
+- Receives training job requests from the frontend
+- Converts job configurations to RayJob CRDs
+- Creates corresponding Tensorboard resources
+- Manages MinIO storage integration for training data
+- Deploys resources to Kubernetes/Kubeflow
 
 ## Features
 
-- **REST API**: Comprehensive API for training job management
-- **Karmada Integration**: Deploy workloads to multiple clusters with PropagationPolicy
-- **Multi-Framework Support**: Supports standard K8s Jobs and Ray Jobs
-- **Database Persistence**: PostgreSQL for job metadata storage
-- **Aggregated API Proxy**: Query resources from member clusters through Karmada
-- **Resource Conversion**: Transform frontend forms into K8s manifests
+- **RayJob Conversion**: Transform frontend forms into RayJob CRDs with TRAINING_CONFIG
+- **Tensorboard Integration**: Automatically create Tensorboard CRD on job submission
+- **MinIO Storage**: Upload training data and configurations to MinIO
+- **XGBoost Support**: Full hyperparameter mapping for XGBoost training jobs
+- **Flexible Configuration**: Environment-based configuration
 
 ## Prerequisites
 
-- Go 1.21+
-- PostgreSQL 15+
-- Karmada cluster with kubeconfig
-- Management cluster kubeconfig
-- Docker (optional, for containerized deployment)
+- Go 1.23+
+- Kubernetes cluster with Kubeflow installed
+- RayJob CRD (ray.io/v1)
+- Tensorboard CRD (tensorboard.kubeflow.org/v1alpha1)
+- MinIO storage with secret (`minio-secret`)
+- Docker (for containerized deployment)
 
 ## Configuration
 
-The backend requires three main configuration parameters:
-
-1. **Karmada Kubeconfig**: Path to Karmada control plane kubeconfig
-2. **MGMT Kubeconfig**: Path to management cluster kubeconfig
-3. **Database URL**: PostgreSQL connection string
-
-These can be provided via command-line flags or environment variables:
+Environment variables:
 
 ```bash
-# Command-line flags
-./main --karmada-kubeconfig=/path/to/karmada-config \
-       --mgmt-kubeconfig=/path/to/mgmt-config \
-       --database-url="postgresql://user:pass@localhost:5432/dbname"
+# Kubernetes config (optional, uses in-cluster config if not set)
+export KUBECONFIG=/path/to/kubeconfig
 
-# Environment variables
-export KARMADA_KUBECONFIG=/path/to/karmada-config
-export MGMT_KUBECONFIG=/path/to/mgmt-config
-export DATABASE_URL="postgresql://user:pass@localhost:5432/dbname"
+# MinIO configuration (via kubernetes secret 'minio-secret')
+# Supports both formats:
+# Format 1: S3_ENDPOINT, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# Format 2: endpoint, accesskey, secretkey
+
+# Server port
 export PORT=8080
 ```
 
@@ -52,224 +55,123 @@ export PORT=8080
 backend/
 ├── main.go                 # Application entry point
 ├── go.mod                  # Go module definition
-├── config/                 # Configuration and initialization
-│   ├── config.go          # Config management
-│   └── models.go          # Database models
-├── handlers/              # HTTP request handlers
-│   └── handlers.go        # REST API handlers
-├── karmada/               # Karmada client wrapper
-│   └── client.go          # Karmada operations
-├── converter/             # Resource conversion
-│   └── converter.go       # Form to K8s resource converter
-├── models/                # API models
-│   └── models.go          # Request/response models
-├── repository/            # Database operations
-│   └── repository.go      # CRUD operations
-├── Dockerfile             # Container image definition
-├── docker-compose.yml     # Local development setup
-└── k8s-deployment.yaml    # Kubernetes deployment manifests
-```
-
-## Installation
-
-### Local Development
-
-1. **Initialize Go modules**:
-```bash
-cd backend
-go mod download
-go mod tidy
-```
-
-2. **Set up PostgreSQL**:
-```bash
-# Using Docker
-docker run -d \
-  --name ml-platform-postgres \
-  -e POSTGRES_USER=mlplatform \
-  -e POSTGRES_PASSWORD=mlplatform123 \
-  -e POSTGRES_DB=training_jobs \
-  -p 5432:5432 \
-  postgres:15-alpine
-```
-
-3. **Run the backend**:
-```bash
-go run main.go \
-  --karmada-kubeconfig=$HOME/.kube/karmada-config \
-  --mgmt-kubeconfig=$HOME/.kube/config \
-  --database-url="postgresql://mlplatform:mlplatform123@localhost:5432/training_jobs?sslmode=disable"
-```
-
-### Using Docker Compose
-
-1. **Update docker-compose.yml** with your kubeconfig paths
-2. **Run**:
-```bash
-docker-compose up -d
-```
-
-### Kubernetes Deployment
-
-1. **Update k8s-deployment.yaml** with your kubeconfig content in the Secret
-2. **Build and push Docker image**:
-```bash
-docker build -t your-registry/ml-platform-backend:latest .
-docker push your-registry/ml-platform-backend:latest
-```
-
-3. **Deploy**:
-```bash
-kubectl apply -f k8s-deployment.yaml
+├── converter/              # Resource conversion
+│   └── converter.go        # RayJob and Tensorboard converter
+├── handlers/               # HTTP request handlers
+│   └── handlers.go         # REST API handlers
+├── k8s/                    # Kubernetes client
+│   └── client.go           # K8s operations
+├── models/                 # API models
+│   └── models.go           # Request/response structures
+├── storage/                # Storage integration
+│   └── minio.go            # MinIO client
+└── Dockerfile              # Container image definition
 ```
 
 ## API Endpoints
 
 ### Training Jobs
 
-- `POST /api/v1/jobs` - Create a new training job
-- `GET /api/v1/jobs` - List all training jobs
-- `GET /api/v1/jobs/:id` - Get training job details
-- `DELETE /api/v1/jobs/:id` - Delete a training job
-- `GET /api/v1/jobs/:id/status` - Get job status
-- `GET /api/v1/jobs/:id/logs` - Get job logs
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/jobs` | Create a new training job |
+| GET | `/api/v1/jobs` | List all training jobs |
+| GET | `/api/v1/jobs/:id` | Get job details |
+| DELETE | `/api/v1/jobs/:id` | Delete a training job |
 
-### Member Clusters (Proxy)
+### Health
 
-- `GET /api/v1/proxy/clusters` - List member clusters
-- `GET /api/v1/proxy/clusters/:cluster/resources` - Get cluster resources
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Service health status |
 
-### Health Check
+## RayJob Configuration
 
-- `GET /health` - Service health status
+The converter generates TRAINING_CONFIG environment variable with:
 
-## API Examples
-
-### Create a Training Job
-
-```bash
-curl -X POST http://localhost:8080/api/v1/jobs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "pytorch-training",
-    "namespace": "default",
-    "jobType": "pytorch",
-    "framework": "pytorch",
-    "image": "pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime",
-    "command": "python train.py --epochs 10",
-    "replicas": 4,
-    "cpuRequest": "2",
-    "memoryRequest": "4Gi",
-    "gpuRequest": 1,
-    "hyperparameters": {
-      "learning_rate": "0.001",
-      "batch_size": "32"
-    },
-    "targetClusters": ["cluster-1", "cluster-2"]
-  }'
+```json
+{
+  "Input": [
+    {
+      "name": "training-data",
+      "type": "minio",
+      "endpoint": "minio-endpoint",
+      "bucket": "bucket-name",
+      "path": "path/to/data",
+      "accessKey": "...",
+      "secretKey": "..."
+    }
+  ],
+  "Output": [
+    {
+      "name": "output-path",
+      "bucket": "output-bucket",
+      "path": "path/to/output"
+    }
+  ],
+  "Checkpoint": {
+    "name": "checkpoint-path",
+    "bucket": "checkpoint-bucket",
+    "path": "path/to/checkpoint"
+  },
+  "Hyperparams": {
+    "nthread": 4,
+    "num_workers": 2,
+    "updater": "auto",
+    "eta": 0.3,
+    "max_depth": 6,
+    "n_estimators": 100,
+    "objective": "multi:softmax"
+  }
+}
 ```
 
-### List Training Jobs
+## Tensorboard Integration
 
-```bash
-curl http://localhost:8080/api/v1/jobs
-```
-
-### Get Job Status
-
-```bash
-curl http://localhost:8080/api/v1/jobs/{job-id}/status
-```
-
-### List Member Clusters
-
-```bash
-curl http://localhost:8080/api/v1/proxy/clusters
-```
-
-## How It Works
-
-1. **Frontend Submission**: User submits training job form from frontend
-2. **API Reception**: Backend receives POST request at `/api/v1/jobs`
-3. **Database Storage**: Job metadata saved to PostgreSQL
-4. **Resource Conversion**: Form data converted to K8s Job/RayJob manifest
-5. **Karmada Deployment**: 
-   - Resource created in Karmada control plane
-   - PropagationPolicy created with target cluster configuration
-   - Karmada propagates resource to specified member clusters
-6. **Status Tracking**: Backend monitors job status through Karmada
-7. **Aggregated Queries**: Frontend can query member cluster resources via proxy API
-
-## Karmada PropagationPolicy
-
-The backend automatically creates PropagationPolicy for each job:
+On job submission, the backend automatically creates a Tensorboard CRD:
 
 ```yaml
-apiVersion: policy.karmada.io/v1alpha1
-kind: PropagationPolicy
+apiVersion: tensorboard.kubeflow.org/v1alpha1
+kind: Tensorboard
 metadata:
-  name: {job-name}-propagation
-  namespace: {namespace}
+  name: tb-<job-id>
+  namespace: <user-namespace>
 spec:
-  resourceSelectors:
-    - apiVersion: batch/v1
-      kind: Job
-      name: {job-name}
-  placement:
-    clusterAffinity:
-      clusterNames:
-        - cluster-1
-        - cluster-2
-    replicaScheduling:
-      replicaSchedulingType: Divided
+  logspath: s3://<bucket>/<checkpoint-path>
 ```
 
-## Database Schema
+## Building
 
-```sql
-CREATE TABLE training_jobs (
-  id VARCHAR PRIMARY KEY,
-  name VARCHAR,
-  namespace VARCHAR,
-  job_type VARCHAR,
-  framework VARCHAR,
-  image VARCHAR,
-  command TEXT,
-  replicas INTEGER,
-  workers_per_node INTEGER,
-  cpu_request VARCHAR,
-  cpu_limit VARCHAR,
-  memory_request VARCHAR,
-  memory_limit VARCHAR,
-  gpu_request INTEGER,
-  storage_class VARCHAR,
-  storage_size VARCHAR,
-  hyperparameters TEXT,
-  target_clusters TEXT,
-  status VARCHAR,
-  message TEXT,
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP,
-  deleted_at TIMESTAMP
-);
+### Local Development
+
+```bash
+cd backend
+go mod download
+go mod tidy
+go build -o ml-platform-backend .
+./ml-platform-backend
 ```
 
-## Development
+### Docker Build
 
-### Adding Support for New Job Types
+```bash
+docker build -t loihoangthanh1411/ml-platform-backend:v2.1.0 .
+docker push loihoangthanh1411/ml-platform-backend:v2.1.0
+```
 
-1. Add converter logic in `converter/converter.go`
-2. Update `handlers.CreateTrainingJob()` switch case
-3. Add any custom CRD handling in `karmada/client.go`
+## Deployment
 
-### Testing
+Apply the deployment manifest:
+
+```bash
+kubectl apply -f manifests/deployment.yaml
+```
+
+## Testing
 
 ```bash
 # Run tests
 go test ./...
-
-# Run with race detection
-go test -race ./...
 
 # Run with coverage
 go test -cover ./...
@@ -277,29 +179,31 @@ go test -cover ./...
 
 ## Troubleshooting
 
-### Connection Issues
+### MinIO Connection Issues
 
-- Verify kubeconfig files are accessible and valid
-- Check network connectivity to Karmada and member clusters
-- Ensure PostgreSQL is running and accessible
+Check the `minio-secret` in the namespace:
+```bash
+kubectl get secret minio-secret -n kubeflow -o yaml
+```
 
-### Job Creation Failures
+The secret should contain either:
+- `S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS format)
+- `endpoint`, `accesskey`, `secretkey` (custom format)
 
-- Check Karmada control plane logs
-- Verify PropagationPolicy was created
-- Ensure target clusters are registered and ready
-- Check resource quotas in target clusters
+### RayJob Not Created
 
-### Database Errors
+Check backend logs:
+```bash
+kubectl logs -n kubeflow -l component=backend
+```
 
-- Verify DATABASE_URL connection string
-- Check PostgreSQL logs
-- Ensure database migrations ran successfully
+### Tensorboard Not Created
+
+Tensorboard creation failures are logged as warnings but don't block job creation:
+```bash
+kubectl logs -n kubeflow -l component=backend | grep -i tensorboard
+```
 
 ## License
 
-[Your License]
-
-## Contributing
-
-[Your Contributing Guidelines]
+Apache 2.0

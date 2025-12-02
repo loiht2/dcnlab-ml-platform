@@ -38,6 +38,26 @@ rules:
   - watch
   - create
   - delete
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - services/proxy
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - pods/log
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - kubeflow.org
   resources:

@@ -33,35 +33,26 @@ def get_tensorboard_dict(namespace, body):
         "namespace": namespace,
     }
     labels = get_tensorboard_configurations(body=body)
-    if labels:
-        metadata["labels"] = labels
+    if not labels:
+        labels = {}
+    # Add tensorboards label for identification and RBAC
+    labels["tensorboards"] = "true"
+    metadata["labels"] = labels
 
     spec = {"logspath": body["logspath"]}
     
-    # If endpoint is provided (for object storage), add AWS_ENDPOINT_URL env var
-    if "endpoint" in body and body["endpoint"]:
-        endpoint_value = body["endpoint"]
+    # Add annotations for MinIO access if using S3/object store
+    if body["logspath"].startswith("s3://"):
+        if "annotations" not in metadata:
+            metadata["annotations"] = {}
         
-        # Convert display value 'minio-system' to full URL
-        if endpoint_value == "minio-system":
-            endpoint_value = "http://minio.minio-system.svc.cluster.local:9000"
-        
-        # Add container spec with environment variable
-        spec["podTemplateSpec"] = {
-            "spec": {
-                "containers": [
-                    {
-                        "name": "tensorboard",
-                        "env": [
-                            {
-                                "name": "AWS_ENDPOINT_URL",
-                                "value": endpoint_value
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
+        # Add MinIO endpoint annotation for tensorboard-controller to use
+        if "endpoint" in body and body["endpoint"]:
+            endpoint_value = body["endpoint"]
+            # Convert display value 'minio-system' to full URL
+            if endpoint_value == "minio-system":
+                endpoint_value = "http://minio.minio-system.svc.cluster.local:9000"
+            metadata["annotations"]["s3-endpoint"] = endpoint_value
 
     tensorboard = {
         "apiVersion": "tensorboard.kubeflow.org/v1alpha1",
