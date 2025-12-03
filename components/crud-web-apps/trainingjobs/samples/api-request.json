@@ -1,0 +1,101 @@
+{
+  "jobName": "xgboost-iris-training",
+  "priority": 500,
+  "algorithm": {
+    "source": "builtin",
+    "algorithmName": "xgboost"
+  },
+  "resources": {
+    "instanceResources": {
+      "cpuCores": 4,
+      "memoryGiB": 16,
+      "gpuCount": 0
+    },
+    "instanceCount": 2,
+    "volumeSizeGB": 50
+  },
+  "stoppingCondition": {
+    "maxRuntimeSeconds": 14400
+  },
+  "input": [
+    {
+      "channelName": "train",
+      "channelType": "train",
+      "sourceType": "object-storage",
+      "storageProvider": "minio",
+      "endpoint": "http://minio.minio-system.svc.cluster.local:9000",
+      "bucket": "kubeflow-user-example-com",
+      "path": "training-data/train/iris-train.csv",
+      "featureNames": ["sepal_length", "sepal_width", "petal_length", "petal_width"],
+      "labelName": "target"
+    },
+    {
+      "channelName": "validation",
+      "channelType": "validation",
+      "sourceType": "object-storage",
+      "storageProvider": "minio",
+      "endpoint": "http://minio.minio-system.svc.cluster.local:9000",
+      "bucket": "kubeflow-user-example-com",
+      "path": "training-data/validation/iris-val.csv",
+      "featureNames": ["sepal_length", "sepal_width", "petal_length", "petal_width"],
+      "labelName": "target"
+    }
+  ],
+  "output": {
+    "storageProvider": "minio",
+    "bucket": "kubeflow-user-example-com",
+    "path": "output/xgboost-iris-training",
+    "endpoint": "http://minio.minio-system.svc.cluster.local:9000"
+  },
+  "checkpoint": {
+    "storageProvider": "minio",
+    "bucket": "kubeflow-user-example-com",
+    "path": "checkpoint/xgboost-iris-training",
+    "endpoint": "http://minio.minio-system.svc.cluster.local:9000"
+  },
+  "currentNamespace": "kubeflow-user-example-com",
+  "hyperparameters": {
+    "xgboost": {
+      "num_round": 100,
+      "early_stopping_rounds": 10,
+      "csv_weights": 1,
+      "booster": "gbtree",
+      "verbosity": 1,
+      "nthread": "4",
+      "eta": 0.3,
+      "gamma": 0,
+      "max_depth": 6,
+      "min_child_weight": 1,
+      "max_delta_step": 0,
+      "subsample": 1,
+      "sampling_method": "uniform",
+      "colsample_bytree": 1,
+      "colsample_bylevel": 1,
+      "colsample_bynode": 1,
+      "lambda": 1,
+      "alpha": 0,
+      "tree_method": "auto",
+      "sketch_eps": 0.03,
+      "scale_pos_weight": 1,
+      "updater": "grow_colmaker,prune",
+      "dsplit": "auto",
+      "refresh_leaf": 1,
+      "process_type": "default",
+      "grow_policy": "depthwise",
+      "max_leaves": 0,
+      "max_bin": 256,
+      "num_parallel_tree": 1,
+      "sample_type": "uniform",
+      "normalize_type": "tree",
+      "rate_drop": 0,
+      "one_drop": 0,
+      "skip_drop": 0,
+      "lambda_bias": 0,
+      "tweedie_variance_power": 1.5,
+      "objective": "multi:softmax",
+      "base_score": 0.5,
+      "eval_metric": ["mlogloss", "merror"]
+    }
+  },
+  "namespace": "kubeflow-user-example-com"
+}
