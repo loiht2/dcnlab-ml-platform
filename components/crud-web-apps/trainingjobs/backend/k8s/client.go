@@ -170,17 +170,6 @@ func (c *Client) DeleteJob(ctx context.Context, name, namespace string) error {
 	return nil
 }
 
-// CreatePVC creates a PersistentVolumeClaim
-func (c *Client) CreatePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) error {
-	_, err := c.clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(ctx, pvc, metav1.CreateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to create PVC: %w", err)
-	}
-
-	log.Printf("Created PVC %s/%s", pvc.Namespace, pvc.Name)
-	return nil
-}
-
 // ListActiveJobs lists all jobs in a namespace
 func (c *Client) ListActiveJobs(ctx context.Context, namespace string) ([]batchv1.Job, error) {
 	jobList, err := c.clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})

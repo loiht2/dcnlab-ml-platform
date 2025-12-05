@@ -13,7 +13,7 @@ metadata:
   annotations:
     training-job-id: xgboost-iris-training-a1b2c3d4
 spec:
-  entrypoint: python /home/ray/xgboost_train.py
+  entrypoint: python /home/ray/xgboost_train_version_2.py
   runtimeEnvYAML: |
     env_vars:
       TRAINING_CONFIG: |

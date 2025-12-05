@@ -82,15 +82,6 @@ func (h *Handler) CreateTrainingJob(c *gin.Context) {
 		return
 	}
 
-	// Create PVC first (optional, only if needed)
-	if req.Resources.VolumeSizeGB > 0 && req.PVCName == "" {
-		pvc := h.converter.CreatePVC(&req, jobID)
-		if err := h.k8sClient.CreatePVC(ctx, pvc); err != nil {
-			log.Printf("Warning: Failed to create PVC: %v", err)
-			// Continue anyway - PVC might already exist
-		}
-	}
-	
 	// Create RayJob using converter
 	rayJob, err := h.converter.ConvertToRayJobV2(&req, jobID)
 	if err != nil {

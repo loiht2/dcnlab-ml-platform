@@ -5,10 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/loiht2/ml-platform-training-job/backend/models"
 )
 
@@ -16,14 +12,9 @@ const (
 	DefaultRayVersion      = "2.46.0"
 	DefaultHeadImage       = "kiepdoden123/iris-training-ray:latest"
 	DefaultWorkerImage     = "kiepdoden123/iris-training-ray:latest"
-	DefaultEntrypoint      = "python /home/ray/xgboost_train.py"
-	DefaultStoragePath     = "/home/ray/result-storage"
+	DefaultEntrypoint      = "python /home/ray/xgboost_train_version_2.py"
 	DefaultLabelColumn     = "target"
-	DefaultS3Region        = "us-east-1"
-	DefaultS3AccessKey     = "loiht2"
-	DefaultS3SecretKey     = "E4XWyvYtlS6E9Q92DPq7sJBoJhaa1j7pbLHhgfeZ"
-	DefaultPVCName         = "kham-pv-for-xgboost"
-	DefaultMountPath       = "/home/ray/result-storage"
+	MinIOSecretName        = "minio-secret"
 )
 
 // Converter handles conversion from frontend models to K8s resources
@@ -57,12 +48,6 @@ func (c *Converter) ConvertToRayJobV2(req *models.TrainingJobRequest, jobID stri
 		workerImage = DefaultWorkerImage
 	}
 
-	// Determine PVC name
-	pvcName := req.PVCName
-	if pvcName == "" {
-		pvcName = DefaultPVCName
-	}
-
 	// Build runtime environment YAML
 	runtimeEnvYAML := c.buildRuntimeEnvYAML(req)
 
@@ -87,9 +72,9 @@ func (c *Converter) ConvertToRayJobV2(req *models.TrainingJobRequest, jobID stri
 			"runtimeEnvYAML":   runtimeEnvYAML,
 			"rayClusterSpec": map[string]interface{}{
 				"rayVersion":      DefaultRayVersion,
-				"headGroupSpec":   c.buildRayHeadGroupSpecV2(req, headImage, pvcName),
+				"headGroupSpec":   c.buildRayHeadGroupSpecV2(req, headImage),
 				"workerGroupSpecs": []interface{}{
-					c.buildRayWorkerGroupSpecV2(req, workerImage, pvcName),
+					c.buildRayWorkerGroupSpecV2(req, workerImage),
 				},
 			},
 		},
@@ -157,15 +142,11 @@ func (c *Converter) buildTrainingConfig(req *models.TrainingJobRequest) map[stri
 		config["use_gpu"] = req.Resources.InstanceResources.GPUCount > 0
 		config["label_column"] = DefaultLabelColumn
 		config["run_name"] = req.JobName
-		config["storage_path"] = c.deriveStoragePath(req.OutputDataConfig.ArtifactURI)
 		
-		// S3/MinIO configuration
+		// S3/MinIO configuration (credentials from minio-secret mounted as env vars)
 		inputConfig := req.InputDataConfig[0]
 		s3Config := map[string]interface{}{
 			"endpoint":   inputConfig.Endpoint,
-			"access_key": DefaultS3AccessKey,
-			"secret_key": DefaultS3SecretKey,
-			"region":     DefaultS3Region,
 			"bucket":     inputConfig.Bucket,
 			"train_key":  inputConfig.Prefix,
 		}
@@ -253,18 +234,8 @@ func (c *Converter) buildXGBoostConfig(xgb *models.XGBoostHyperparameters) map[s
 	return config
 }
 
-// deriveStoragePath determines the storage path from output config
-func (c *Converter) deriveStoragePath(artifactURI string) string {
-	// If starts with file://, extract the path
-	if strings.HasPrefix(artifactURI, "file://") {
-		return strings.TrimPrefix(artifactURI, "file://")
-	}
-	// Otherwise use default
-	return DefaultStoragePath
-}
-
 // buildRayHeadGroupSpecV2 creates the Ray head group spec
-func (c *Converter) buildRayHeadGroupSpecV2(req *models.TrainingJobRequest, image, pvcName string) map[string]interface{} {
+func (c *Converter) buildRayHeadGroupSpecV2(req *models.TrainingJobRequest, image string) map[string]interface{} {
 	// Build resource requirements
 	cpuStr := fmt.Sprintf("%d", req.Resources.InstanceResources.CPUCores)
 	memoryStr := fmt.Sprintf("%dGi", req.Resources.InstanceResources.MemoryGiB)
@@ -284,7 +255,7 @@ func (c *Converter) buildRayHeadGroupSpecV2(req *models.TrainingJobRequest, imag
 		resources["requests"].(map[string]string)["memory"] = memoryStr
 	}
 	
-	// Build container
+	// Build container with minio-secret environment variables
 	container := map[string]interface{}{
 		"name":  "ray-head",
 		"image": image,
@@ -303,10 +274,11 @@ func (c *Converter) buildRayHeadGroupSpecV2(req *models.TrainingJobRequest, imag
 			},
 		},
 		"resources": resources,
-		"volumeMounts": []interface{}{
+		"envFrom": []interface{}{
 			map[string]interface{}{
-				"mountPath": DefaultMountPath,
-				"name":      "result-storage",
+				"secretRef": map[string]interface{}{
+					"name": MinIOSecretName,
+				},
 			},
 		},
 	}
@@ -321,21 +293,13 @@ func (c *Converter) buildRayHeadGroupSpecV2(req *models.TrainingJobRequest, imag
 			},
 			"spec": map[string]interface{}{
 				"containers": []interface{}{container},
-				"volumes": []interface{}{
-					map[string]interface{}{
-						"name": "result-storage",
-						"persistentVolumeClaim": map[string]interface{}{
-							"claimName": pvcName,
-						},
-					},
-				},
 			},
 		},
 	}
 }
 
 // buildRayWorkerGroupSpecV2 creates the Ray worker group spec
-func (c *Converter) buildRayWorkerGroupSpecV2(req *models.TrainingJobRequest, image, pvcName string) map[string]interface{} {
+func (c *Converter) buildRayWorkerGroupSpecV2(req *models.TrainingJobRequest, image string) map[string]interface{} {
 	replicas := req.Resources.InstanceCount
 	if replicas == 0 {
 		replicas = 1
@@ -372,15 +336,16 @@ func (c *Converter) buildRayWorkerGroupSpecV2(req *models.TrainingJobRequest, im
 		resources["requests"].(map[string]string)["nvidia.com/gpu"] = gpuStr
 	}
 	
-	// Build container
+	// Build container with minio-secret environment variables
 	container := map[string]interface{}{
 		"name":      "ray-worker",
 		"image":     image,
 		"resources": resources,
-		"volumeMounts": []interface{}{
+		"envFrom": []interface{}{
 			map[string]interface{}{
-				"mountPath": DefaultMountPath,
-				"name":      "result-storage",
+				"secretRef": map[string]interface{}{
+					"name": MinIOSecretName,
+				},
 			},
 		},
 	}
@@ -399,59 +364,9 @@ func (c *Converter) buildRayWorkerGroupSpecV2(req *models.TrainingJobRequest, im
 			},
 			"spec": map[string]interface{}{
 				"containers": []interface{}{container},
-				"volumes": []interface{}{
-					map[string]interface{}{
-						"name": "result-storage",
-						"persistentVolumeClaim": map[string]interface{}{
-							"claimName": pvcName,
-						},
-					},
-				},
 			},
 		},
 	}
-}
-
-// CreatePVC creates a PersistentVolumeClaim for the training job
-func (c *Converter) CreatePVC(req *models.TrainingJobRequest, jobID string) *corev1.PersistentVolumeClaim {
-	namespace := req.Namespace
-	if namespace == "" {
-		namespace = "default"
-	}
-	
-	pvcName := req.PVCName
-	if pvcName == "" {
-		pvcName = fmt.Sprintf("%s-pvc", req.JobName)
-	}
-	
-	storageSize := fmt.Sprintf("%dGi", req.Resources.VolumeSizeGB)
-	
-	pvc := &corev1.PersistentVolumeClaim{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "PersistentVolumeClaim",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app":             req.JobName,
-				"training-job-id": jobID,
-			},
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteMany,
-			},
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(storageSize),
-				},
-			},
-		},
-	}
-	
-	return pvc
 }
 
 // CreateTensorboard creates a Tensorboard resource for the training job
