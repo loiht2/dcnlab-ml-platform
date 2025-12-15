@@ -4,6 +4,8 @@ iron-ajax(auto, url='/api/metrics', handle-as='json',
     last-response='{{metrics}}', loading='{{pageLoading}}')
 iron-ajax(auto, url='/api/dashboard-links', handle-as='json',
     on-response='_onHasDashboardLinksResponse', on-error='_onHasDashboardLinksError', loading='{{pageLoading}}')
+iron-ajax(auto, url='/api/dashboard-settings', handle-as='json',
+    on-response='_onDashboardSettingsResponse', loading='{{pageLoading}}')
 iron-ajax#envInfo(auto='[[_shouldFetchEnv]]', url='/api/workgroup/env-info', handle-as='json',
     on-response='_onEnvInfoResponse')
 aside#PageLoader(hidden='{{!pageLoading}}')
@@ -55,21 +57,21 @@ app-drawer-layout.flex(narrow='{{narrowMode}}',
                 aside.divider
                 a(href$='[[_buildHref("/manage-users", queryParams.*)]]', tabindex='-1')
                     paper-item.menu-item#contributors Manage Contributors
-            aside.divider
-            a(href='https://github.com/kubeflow/kubeflow',
-                tabindex='-1', target="_blank")
-                paper-item.menu-item GitHub
-                    iron-icon.external(icon="launch")
-            a(href='https://www.kubeflow.org/docs/about/kubeflow/',
+            //- aside.divider
+            //- a(href='https://github.com/kubeflow/kubeflow',
+            //-     tabindex='-1', target="_blank")
+            //-     paper-item.menu-item GitHub
+            //-         iron-icon.external(icon="launch")
+            //- a(href='https://www.kubeflow.org/docs/about/kubeflow/',
                 tabindex='-1', target="_blank")
                 paper-item.menu-item Documentation
                     iron-icon.external(icon="launch")
         footer.footer
             section.build
-                | build version -
-                |
-                span(title="Build: [[buildVersion]] | Dashboard: v[[dashVersion]] | Isolation-Mode: [[isolationMode]]")
-                    | [[buildVersion]]
+                span(style='color: #202124; font-weight: 500;') Distributed Cloud and Networking Lab - 2025
+                //- |
+                //- span(title="Build: [[buildVersion]] | Dashboard: v[[dashVersion]] | Isolation-Mode: [[isolationMode]]")
+                //-     | [[buildVersion]]
     app-header-layout(fullbleed)
         app-header(slot='header', hides, hidden$='[[notFoundInIframe]]')
             app-toolbar
@@ -87,7 +89,7 @@ app-drawer-layout.flex(narrow='{{narrowMode}}',
                 footer#User-Badge
                     logout-button(logout-url='[[logoutUrl]]')
         main#Content
-            section#ViewTabs(hidden$='[[hideTabs]]')
+            section#ViewTabs(hidden$='[[hideTabs]]', style='display: none;')
                 paper-tabs(selected='[[page]]', attr-for-selected='page')
                     paper-tab(page='dashboard', link)
                         a.link(tabindex='-1', href$='[[_buildHref("/", queryParams.*)]]') Dashboard
@@ -97,8 +99,16 @@ app-drawer-layout.flex(narrow='{{narrowMode}}',
                                 entry-animation='fade-in-animation',
                                 exit-animation='fade-out-animation')
                 neon-animatable(page='dashboard')
-                    dashboard-view(namespace='[[queryParams.ns]]',
-                        platform-info='[[platformInfo]]', quick-links='[[quickLinks]]', documentation-items='[[documentationItems]]' metrics='[[metrics]]')
+                    div.monitoring-container(style='padding: 20px;')
+                        template(is='dom-if', if='[[monitoringUrl]]')
+                            div
+                                h2.monitoring-title [[monitoringTitle]]
+                                p.monitoring-description [[monitoringDescription]]
+                                iframe#MonitoringIframe(src='[[_buildMonitoringUrl(queryParams.ns, monitoringUrl, monitoringCluster)]]', style='width: 100%; height: calc(100vh - 220px); border: none;')
+                        template(is='dom-if', if='[[!monitoringUrl]]')
+                            div(style='text-align: center; padding: 60px 20px;')
+                                h2 Welcome to DCNLab Central Dashboard
+                                p Please configure monitoring settings in the centraldashboard-config ConfigMap to display monitoring dashboards.
                 neon-animatable(page='activity')
                     activity-view(namespace='[[queryParams.ns]]')
                 neon-animatable(page='manage-users')

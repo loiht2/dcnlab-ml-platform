@@ -116,6 +116,10 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
             },
             matchingIndex: Number,
             namespacedItemTemplete: String,
+            monitoringUrl: {type: String, value: ''},
+            monitoringCluster: {type: String, value: ''},
+            monitoringTitle: {type: String, value: 'Monitoring Dashboard'},
+            monitoringDescription: {type: String, value: ''},
         };
     }
 
@@ -319,6 +323,47 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
             this.namespacedItemTemplete.includes('{ns}')) {
             this.set('subRouteData.path',
                 this.namespacedItemTemplete.replace('{ns}', namespace));
+        }
+    }
+
+    /**
+     * Build monitoring iframe URL from selected namespace and configmap
+     * settings
+     * @param {string} namespace - Selected namespace from queryParams.ns
+     * @param {string} baseUrl - Base monitoring URL from configmap
+     * @param {string} cluster - Cluster name from configmap
+     * @return {string} Monitoring URL
+     */
+    _buildMonitoringUrl(namespace, baseUrl, cluster) {
+        if (!namespace || namespace === '__all_namespaces' ||
+            !baseUrl) {
+            return '';
+        }
+        const url = new URL(baseUrl);
+        url.searchParams.set('var-queue', namespace);
+        if (cluster) {
+            url.searchParams.set('var-cluster', cluster);
+        }
+        return url.toString();
+    }
+
+    /**
+     * Handle dashboard settings response from configmap
+     * @param {Event} ev AJAX-response
+     */
+    _onDashboardSettingsResponse(ev) {
+        const settings = ev.detail.response;
+        if (settings.MONITORING_URL) {
+            this.monitoringUrl = settings.MONITORING_URL;
+        }
+        if (settings.MONITORING_CLUSTER) {
+            this.monitoringCluster = settings.MONITORING_CLUSTER;
+        }
+        if (settings.MONITORING_TITLE) {
+            this.monitoringTitle = settings.MONITORING_TITLE;
+        }
+        if (settings.MONITORING_DESCRIPTION) {
+            this.monitoringDescription = settings.MONITORING_DESCRIPTION;
         }
     }
 
