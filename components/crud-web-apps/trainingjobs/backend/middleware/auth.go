@@ -19,7 +19,7 @@ const (
 )
 
 // KubeflowAuthMiddleware extracts user identity from Kubeflow headers
-// and determines the user's namespace
+// Note: Namespace is obtained from /api/workgroup/env-info by the frontend
 func KubeflowAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract user email from Kubeflow header
@@ -39,44 +39,11 @@ func KubeflowAuthMiddleware() gin.HandlerFunc {
 		// Store user email in context
 		c.Set(UserEmailKey, userEmail)
 
-		// Determine user's namespace
-		// In Kubeflow, user namespaces typically follow the pattern:
-		// username or username-namespace
-		namespace := determineUserNamespace(userEmail)
-		c.Set(UserNamespaceKey, namespace)
-
-		log.Printf("User %s mapped to namespace: %s", userEmail, namespace)
+		// Namespace should come from request (set by frontend from /api/workgroup/env-info)
+		// No longer deriving namespace from email
 
 		c.Next()
 	}
-}
-
-// determineUserNamespace extracts namespace from user email
-// For Kubeflow, the namespace follows the pattern: kubeflow-<email-with-special-chars-replaced>
-// Example: user@example.com -> kubeflow-user-example-com
-func determineUserNamespace(userEmail string) string {
-	// Sanitize email for use as namespace
-	// Kubernetes namespace must be DNS-1123 label:
-	// - lowercase alphanumeric characters or '-'
-	// - start and end with an alphanumeric character
-	namespace := strings.ToLower(userEmail)
-	
-	// Replace @ and . with -
-	namespace = strings.ReplaceAll(namespace, "@", "-")
-	namespace = strings.ReplaceAll(namespace, ".", "-")
-	namespace = strings.ReplaceAll(namespace, "_", "-")
-	
-	// Add kubeflow prefix if not already present
-	if !strings.HasPrefix(namespace, "kubeflow-") {
-		namespace = "kubeflow-" + namespace
-	}
-	
-	// Handle anonymous users
-	if strings.Contains(namespace, "anonymous") {
-		return "kubeflow-user-example-com" // Default namespace for anonymous
-	}
-
-	return namespace
 }
 
 // GetUserEmail retrieves user email from Gin context
@@ -89,9 +56,11 @@ func GetUserEmail(c *gin.Context) string {
 }
 
 // GetUserNamespace retrieves user namespace from Gin context
+// Namespace should be set by the request (from frontend via /api/workgroup/env-info)
 func GetUserNamespace(c *gin.Context) string {
 	namespace, exists := c.Get(UserNamespaceKey)
 	if !exists {
+		// Fallback to default if not set
 		return "default"
 	}
 	return namespace.(string)

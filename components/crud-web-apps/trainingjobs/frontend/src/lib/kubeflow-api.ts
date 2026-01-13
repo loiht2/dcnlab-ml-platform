@@ -103,9 +103,19 @@ function getEnvInfoFromURL(): KubeflowEnvInfo {
 }
 
 /**
- * Get current namespace (prefer env-info, fallback to URL)
+ * Get current namespace - prefer namespace service (from Central Dashboard), fallback to URL
  */
 export async function getCurrentNamespace(): Promise<string> {
+  // Import namespace service dynamically to avoid circular dependencies
+  const { namespaceService } = await import('./namespace');
+  
+  // First check if we have a namespace from Central Dashboard
+  const currentNs = namespaceService.getCurrentNamespace();
+  if (currentNs) {
+    return currentNs;
+  }
+  
+  // Otherwise fallback to env-info API
   const envInfo = await getKubeflowEnvInfo();
   return getDefaultNamespace(envInfo);
 }

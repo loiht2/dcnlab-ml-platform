@@ -15,7 +15,7 @@ import type { AlgorithmSource, Channel, JobPayload, StorageProvider, StoredJob, 
 import { CustomHyperparametersEditor } from "@/components/CustomHyperparametersEditor";
 import { jobsApi, uploadApi, APIError } from "@/lib/api-service";
 import { convertToBackendRequest, convertFromBackendResponse } from "@/lib/backend-converter";
-import { getCurrentNamespace } from "@/lib/kubeflow-api";
+import { useNamespace } from "@/lib/hooks";
 
 const builtinAlgorithms = [
   { id: "xgboost", name: "XGBoost" },
@@ -521,7 +521,9 @@ function ChannelEditor({ value, onChange, hasError, bucketError, prefixError, fe
 export default function CreateTrainingJobUI() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentNamespace, setCurrentNamespace] = useState<string>('');
+  
+  // Use namespace hook to subscribe to Central Dashboard namespace changes
+  const { namespaceString: currentNamespace } = useNamespace();
   
   const defaultAlgorithmId = builtinAlgorithms[0].id;
   const [form, setForm] = useState<TrainingJobForm>(() => ({
@@ -578,15 +580,7 @@ export default function CreateTrainingJobUI() {
 
   const errors = useMemo(() => validateForm(form), [form]);
 
-  // Fetch Kubeflow environment info on mount
-  useEffect(() => {
-    getCurrentNamespace().then(namespace => {
-      setCurrentNamespace(namespace);
-      console.log('Kubeflow namespace:', namespace);
-    }).catch(err => {
-      console.error('Failed to get Kubeflow environment info:', err);
-    });
-  }, []);
+  // Namespace is now handled by useNamespace hook which subscribes to Central Dashboard
 
   // Sync default output config when job name or namespace changes
   useEffect(() => {
@@ -786,7 +780,9 @@ export default function CreateTrainingJobUI() {
         
         for (const channel of uploadChannels) {
           if (channel.uploadedFile) {
-            const objectKey = `training-data/${channel.channelName}/${channel.uploadedFile.name}`;
+            // Use channelType (train/validation/test) as folder instead of channelName
+            const channelType = channel.channelType || 'train';
+            const objectKey = `training-data/${channelType}/${channel.uploadedFile.name}`;
             console.log(`Uploading file: ${channel.uploadedFile.name} to ${namespace}/${objectKey}`);
             
             try {

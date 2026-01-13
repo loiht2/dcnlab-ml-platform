@@ -43,6 +43,12 @@ spec:
         sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: ml-platform-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532  # nonroot user
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: loihoangthanh1411/ml-platform-backend:v2.1.0
@@ -51,6 +57,14 @@ spec:
             - containerPort: 8080
               name: http
               protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
           env:
             - name: PORT
               value: "8080"
@@ -132,6 +146,12 @@ spec:
         sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: ml-platform-frontend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # nginx user
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: loihoangthanh1411/ml-platform-frontend:v2.1.0
@@ -140,6 +160,14 @@ spec:
             - containerPort: 8080
               name: http
               protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
           resources:
             requests:
               memory: "128Mi"

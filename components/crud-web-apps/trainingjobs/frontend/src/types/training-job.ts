@@ -93,6 +93,7 @@ export type JobStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Stoppe
 export type StoredJob = {
   id: string;
   algorithm: string;
+  namespace?: string;
   createdAt: number;
   priority: number;
   status: JobStatus;

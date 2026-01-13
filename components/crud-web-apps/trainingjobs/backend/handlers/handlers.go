@@ -103,12 +103,14 @@ func (h *Handler) CreateTrainingJob(c *gin.Context) {
 	}
 
 	// Create Tensorboard for the training job
+	log.Printf("Creating Tensorboard for job %s in namespace %s", req.JobName, req.Namespace)
 	tensorboard := h.converter.CreateTensorboard(&req, req.JobName)
 	if err := h.k8sClient.CreateTensorboard(ctx, tensorboard); err != nil {
-		log.Printf("Warning: Failed to create Tensorboard: %v", err)
+		log.Printf("ERROR: Failed to create Tensorboard for job %s: %v", req.JobName, err)
+		log.Printf("Tensorboard spec: %+v", tensorboard)
 		// Continue anyway - Tensorboard creation is optional
 	} else {
-		log.Printf("Successfully created Tensorboard for job %s in namespace %s", req.JobName, req.Namespace)
+		log.Printf("Successfully created Tensorboard %s-tb for job %s in namespace %s", req.JobName, req.JobName, req.Namespace)
 	}
 
 	// Build response from created job

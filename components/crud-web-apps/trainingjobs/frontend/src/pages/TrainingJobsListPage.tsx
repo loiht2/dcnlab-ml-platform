@@ -1,20 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { loadJobs } from "@/lib/jobs-storage";
 import type { JobStatus, StoredJob } from "@/types/training-job";
 import { jobsApi, APIError } from "@/lib/api-service";
 import { convertFromBackendResponse } from "@/lib/backend-converter";
+import { useNamespacePoller } from "@/lib/hooks";
 import { Loader2, RefreshCw } from "lucide-react";
 
 const JOB_STATUSES = new Set<JobStatus>(["Pending", "Running", "Succeeded", "Failed", "Stopped"]);
 
-function CreateButton() {
+function CreateButton({ namespace }: { namespace?: string }) {
   const [searchParams] = useSearchParams();
-  const qs = searchParams.toString();
+  // Ensure namespace is in the query params
+  const params = new URLSearchParams(searchParams);
+  if (namespace) {
+    params.set('ns', namespace);
+  }
+  const qs = params.toString();
   const href = qs ? `/create?${qs}` : "/create";
   return (
     <Button asChild size="lg">
@@ -24,75 +29,63 @@ function CreateButton() {
 }
 
 export default function TrainingJobsListPage() {
-  const [jobs, setJobs] = useState<StoredJob[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [useBackend, setUseBackend] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function load() {
+  // Use the namespace-aware polling hook
+  // This automatically:
+  // 1. Subscribes to namespace changes from Central Dashboard
+  // 2. Re-queries when namespace changes
+  // 3. Uses exponential backoff for efficient polling (1s → 2s → 4s → 8s)
+  const {
+    data: jobs,
+    error: pollerError,
+    isLoading: loading,
+    namespaceString,
+    isIframed,
+    refresh,
+  } = useNamespacePoller<StoredJob[]>(
+    // Fetch function - called with current namespace
+    async (ns: string) => {
       try {
-        setLoading(true);
-        setError(null);
-        
-        let data: StoredJob[] = [];
-        
-        if (useBackend) {
-          try {
-            // Try to load from backend first
-            const backendJobs = await jobsApi.list();
-            data = backendJobs.map(job => convertFromBackendResponse(job));
-          } catch (backendError) {
-            console.error("Failed to load from backend, falling back to local storage", backendError);
-            setError(backendError instanceof APIError ? backendError.message : "Failed to connect to backend");
-            // Fall back to local storage
-            data = await loadJobs();
-          }
-        } else {
-          // Load from local storage only
-          data = await loadJobs();
-        }
-        
-        if (!ignore) {
-          const parsed = data.filter((item): item is StoredJob => {
-            if (!item || typeof item !== "object") return false;
-            const maybe = item as Partial<StoredJob>;
-            return (
-              typeof maybe.id === "string" &&
-              typeof maybe.algorithm === "string" &&
-              typeof maybe.createdAt === "number" &&
-              typeof maybe.priority === "number" &&
-              typeof maybe.status === "string" &&
-              JOB_STATUSES.has(maybe.status as JobStatus)
-            );
-          });
-          setJobs(parsed);
-        }
-      } catch (error) {
-        console.error("Failed to load jobs", error);
-        if (!ignore) {
-          setJobs([]);
-          setError(error instanceof Error ? error.message : "Failed to load jobs");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+        const backendJobs = await jobsApi.list(ns);
+        return backendJobs.map(job => convertFromBackendResponse(job));
+      } catch (backendError) {
+        console.error("Failed to load from backend:", backendError);
+        throw backendError;
       }
+    },
+    {
+      // Process and validate data
+      processData: (data) => {
+        if (!Array.isArray(data)) return [];
+        return data.filter((item): item is StoredJob => {
+          if (!item || typeof item !== "object") return false;
+          const maybe = item as Partial<StoredJob>;
+          return (
+            typeof maybe.id === "string" &&
+            typeof maybe.algorithm === "string" &&
+            typeof maybe.createdAt === "number" &&
+            typeof maybe.priority === "number" &&
+            typeof maybe.status === "string" &&
+            JOB_STATUSES.has(maybe.status as JobStatus)
+          );
+        });
+      },
+      // Polling configuration - matches other crud-web-apps
+      config: {
+        initialInterval: 1000,  // Start at 1 second
+        maxInterval: 8000,       // Max 8 seconds
+        retries: 1,
+      },
     }
+  );
 
-    load();
-    // Removed auto-refresh - users can manually refresh if needed
+  // Convert error to string for display
+  const error = pollerError ? (pollerError instanceof APIError ? pollerError.message : pollerError.message) : null;
 
-    return () => {
-      ignore = true;
-    };
-  }, [useBackend]);
+  const handleRefresh = useCallback(() => {
+    refresh();
+  }, [refresh]);
 
-  const sortedJobs = useMemo(() => [...jobs].sort((a, b) => b.createdAt - a.createdAt), [jobs]);
+  const sortedJobs = useMemo(() => [...(jobs || [])].sort((a, b) => b.createdAt - a.createdAt), [jobs]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -102,9 +95,27 @@ export default function TrainingJobsListPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Training Jobs</h1>
-              <p className="mt-2 text-lg text-slate-600">Monitor your ML training jobs and track their progress</p>
+              <p className="mt-2 text-lg text-slate-600">
+                Monitor your ML training jobs and track their progress
+                {namespaceString && (
+                  <span className="ml-2 text-sm text-slate-500">
+                    (Namespace: <span className="font-medium">{namespaceString}</span>)
+                  </span>
+                )}
+              </p>
             </div>
-            <CreateButton />
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={loading}
+                title="Refresh jobs list"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+              <CreateButton namespace={namespaceString} />
+            </div>
           </div>
           
           {/* Stats Bar */}
@@ -117,25 +128,25 @@ export default function TrainingJobsListPage() {
               <div className="rounded-lg bg-emerald-50 px-4 py-3">
                 <p className="text-sm text-emerald-700">Succeeded</p>
                 <p className="mt-1 text-2xl font-bold text-emerald-900">
-                  {sortedJobs.filter((j) => j.status === "Succeeded").length}
+                  {sortedJobs.filter((j) => j.status === "Succeeded" || j.jobStatus === "SUCCEEDED").length}
                 </p>
               </div>
               <div className="rounded-lg bg-blue-50 px-4 py-3">
                 <p className="text-sm text-blue-700">Running</p>
                 <p className="mt-1 text-2xl font-bold text-blue-900">
-                  {sortedJobs.filter((j) => j.status === "Running").length}
+                  {sortedJobs.filter((j) => j.status === "Running" || j.jobStatus === "RUNNING").length}
                 </p>
               </div>
               <div className="rounded-lg bg-amber-50 px-4 py-3">
                 <p className="text-sm text-amber-700">Pending</p>
                 <p className="mt-1 text-2xl font-bold text-amber-900">
-                  {sortedJobs.filter((j) => j.status === "Pending").length}
+                  {sortedJobs.filter((j) => j.status === "Pending" || j.jobStatus === "PENDING").length}
                 </p>
               </div>
               <div className="rounded-lg bg-red-50 px-4 py-3">
                 <p className="text-sm text-red-700">Failed</p>
                 <p className="mt-1 text-2xl font-bold text-red-900">
-                  {sortedJobs.filter((j) => j.status === "Failed").length}
+                  {sortedJobs.filter((j) => j.status === "Failed" || j.jobStatus === "FAILED").length}
                 </p>
               </div>
             </div>
@@ -145,6 +156,23 @@ export default function TrainingJobsListPage() {
 
       {/* Main Content */}
       <main className="mx-auto max-w-7xl px-6 py-10">
+        {/* Connection Status Banner (only show when not in iframe) */}
+        {!isIframed && namespaceString && (
+          <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <span className="text-blue-600 text-xl">ℹ️</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-blue-900">Standalone Mode</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  Running outside Central Dashboard. Using namespace: <strong>{namespaceString}</strong>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Error Banner */}
         {error && (
           <div className="mb-6 rounded-lg bg-yellow-50 border border-yellow-200 p-4">
@@ -155,22 +183,16 @@ export default function TrainingJobsListPage() {
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-yellow-900">Backend Connection Issue</h3>
                 <p className="text-sm text-yellow-700 mt-1">{error}</p>
-                <p className="text-xs text-yellow-600 mt-1">Showing locally stored jobs. Some jobs may be out of date.</p>
+                <p className="text-xs text-yellow-600 mt-1">Jobs will be automatically refreshed when connection is restored.</p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  setRefreshing(true);
-                  setUseBackend(true);
-                  // Trigger reload by toggling state
-                  await new Promise(resolve => setTimeout(resolve, 100));
-                  window.location.reload();
-                }}
-                disabled={refreshing}
+                onClick={handleRefresh}
+                disabled={loading}
                 className="flex-shrink-0"
               >
-                <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
                 Retry
               </Button>
             </div>
@@ -181,7 +203,7 @@ export default function TrainingJobsListPage() {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <Loader2 className="h-12 w-12 animate-spin text-blue-600 mb-4" />
-              <p className="text-slate-600">Loading jobs...</p>
+              <p className="text-slate-600">Loading jobs{namespaceString ? ` from ${namespaceString}` : ''}...</p>
             </CardContent>
           </Card>
         ) : sortedJobs.length === 0 ? (
@@ -192,9 +214,12 @@ export default function TrainingJobsListPage() {
               </div>
               <h3 className="text-xl font-semibold text-slate-900 mb-2">No jobs yet</h3>
               <p className="text-slate-600 mb-6 max-w-md">
-                Get started by creating your first training job. Click the button above to configure and submit a new job.
+                {namespaceString 
+                  ? `No training jobs found in namespace "${namespaceString}". Create your first training job to get started.`
+                  : "Get started by creating your first training job. Click the button above to configure and submit a new job."
+                }
               </p>
-              <CreateButton />
+              <CreateButton namespace={namespaceString} />
             </CardContent>
           </Card>
         ) : (
@@ -228,6 +253,11 @@ export default function TrainingJobsListPage() {
                           <h3 className="text-lg font-semibold text-slate-900 truncate">{job.id}</h3>
                           <p className="text-sm text-slate-600 mt-1">
                             <span className="font-medium">Algorithm:</span> {job.algorithm}
+                            {job.namespace && (
+                              <span className="ml-3">
+                                <span className="font-medium">Namespace:</span> {job.namespace}
+                              </span>
+                            )}
                           </p>
                         </div>
                         
