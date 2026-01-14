@@ -144,6 +144,9 @@ export function convertToBackendRequest(
     request.checkpoint = checkpoint;
   }
   
+  // IMPORTANT: Set namespace field (not currentNamespace) for backend to use
+  request.namespace = currentNamespace;
+  
   return request;
 }
 

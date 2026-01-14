@@ -51,10 +51,15 @@ func (h *Handler) CreateTrainingJob(c *gin.Context) {
 	userEmail := middleware.GetUserEmail(c)
 	
 	// Use namespace from request (set by frontend from Kubeflow env-info)
-	// If not provided, fall back to user's default namespace
+	// Check both 'namespace' and 'currentNamespace' fields for compatibility
 	if req.Namespace == "" {
-		req.Namespace = middleware.GetTargetNamespace(c)
-		log.Printf("No namespace in request, using default: %s", req.Namespace)
+		if req.CurrentNamespace != "" {
+			req.Namespace = req.CurrentNamespace
+			log.Printf("Using currentNamespace field: %s", req.Namespace)
+		} else {
+			req.Namespace = middleware.GetTargetNamespace(c)
+			log.Printf("No namespace in request, using default from middleware: %s", req.Namespace)
+		}
 	}
 	
 	log.Printf("User %s creating job '%s' in namespace '%s'", userEmail, req.JobName, req.Namespace)
@@ -308,16 +313,21 @@ func (h *Handler) GetTrainingJob(c *gin.Context) {
 // DeleteTrainingJob handles DELETE /api/v1/jobs/:id
 func (h *Handler) DeleteTrainingJob(c *gin.Context) {
 	id := c.Param("id")
-	userNamespace := middleware.GetUserNamespace(c)
 	userEmail := middleware.GetUserEmail(c)
+	
+	// Get namespace from query parameter first, then fall back to user's namespace
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		namespace = middleware.GetUserNamespace(c)
+	}
 
-	log.Printf("User %s deleting job %s in namespace %s", userEmail, id, userNamespace)
+	log.Printf("User %s deleting job %s in namespace %s", userEmail, id, namespace)
 
 	// Delete from Kubernetes (ID is the RayJob name)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := h.k8sClient.DeleteJob(ctx, id, userNamespace); err != nil {
+	if err := h.k8sClient.DeleteJob(ctx, id, namespace); err != nil {
 		log.Printf("Failed to delete job from Kubernetes: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to delete training job",
@@ -326,7 +336,7 @@ func (h *Handler) DeleteTrainingJob(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Successfully deleted RayJob %s in namespace %s", id, userNamespace)
+	log.Printf("Successfully deleted RayJob %s in namespace %s", id, namespace)
 	c.JSON(http.StatusOK, gin.H{"message": "Training job deleted successfully"})
 }
 

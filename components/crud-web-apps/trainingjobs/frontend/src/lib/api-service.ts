@@ -36,7 +36,8 @@ export interface BackendTrainingJobRequest {
   };
   hyperparameters?: any; // Can contain xgboost, tensorflow, etc.
   customHyperparameters?: Record<string, any>;
-  namespace?: string;
+  namespace?: string;           // IMPORTANT: Namespace where job will be created
+  currentNamespace?: string;    // Legacy field, use 'namespace' instead
   entrypoint?: string;
   headImage?: string;
   workerImage?: string;
@@ -153,8 +154,9 @@ export const jobsApi = {
   /**
    * Delete a training job
    */
-  delete: async (id: string): Promise<{ message: string }> => {
-    return fetchAPI<{ message: string }>(`/jobs/${id}`, {
+  delete: async (id: string, namespace?: string): Promise<{ message: string }> => {
+    const query = namespace ? `?namespace=${namespace}` : '';
+    return fetchAPI<{ message: string }>(`/jobs/${id}${query}`, {
       method: 'DELETE',
     });
   },

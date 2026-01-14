@@ -1,14 +1,24 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { JobStatus, StoredJob } from "@/types/training-job";
 import { jobsApi, APIError } from "@/lib/api-service";
 import { convertFromBackendResponse } from "@/lib/backend-converter";
 import { useNamespacePoller } from "@/lib/hooks";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 const JOB_STATUSES = new Set<JobStatus>(["Pending", "Running", "Succeeded", "Failed", "Stopped"]);
 
@@ -81,9 +91,58 @@ export default function TrainingJobsListPage() {
   // Convert error to string for display
   const error = pollerError ? (pollerError instanceof APIError ? pollerError.message : pollerError.message) : null;
 
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [jobToDelete, setJobToDelete] = useState<StoredJob | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const handleRefresh = useCallback(() => {
     refresh();
   }, [refresh]);
+
+  // Handle delete button click - open confirmation dialog
+  const handleDeleteClick = useCallback((job: StoredJob) => {
+    setJobToDelete(job);
+    setDeleteError(null);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!jobToDelete) return;
+    
+    setDeleting(true);
+    setDeleteError(null);
+    
+    try {
+      await jobsApi.delete(jobToDelete.id, namespaceString);
+      setDeleteDialogOpen(false);
+      setJobToDelete(null);
+      // Refresh the list to show updated data
+      refresh();
+    } catch (err) {
+      console.error("Failed to delete job:", err);
+      if (err instanceof APIError) {
+        setDeleteError(err.message);
+      } else if (err instanceof Error) {
+        setDeleteError(err.message);
+      } else {
+        setDeleteError("An unexpected error occurred while deleting the job.");
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }, [jobToDelete, namespaceString, refresh]);
+
+  // Handle delete dialog close
+  const handleDeleteCancel = useCallback(() => {
+    if (!deleting) {
+      setDeleteDialogOpen(false);
+      setJobToDelete(null);
+      setDeleteError(null);
+    }
+  }, [deleting]);
 
   const sortedJobs = useMemo(() => [...(jobs || [])].sort((a, b) => b.createdAt - a.createdAt), [jobs]);
 
@@ -294,6 +353,17 @@ export default function TrainingJobsListPage() {
                             </div>
                           )}
                         </div>
+                        
+                        {/* Delete Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteClick(job)}
+                          className="shrink-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 hover:border-red-300"
+                          title="Delete this job"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                       
                       {/* Deployment Status (if exists) */}
@@ -312,6 +382,52 @@ export default function TrainingJobsListPage() {
           </div>
         )}
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Training Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the job{" "}
+              <span className="font-semibold text-slate-900">"{jobToDelete?.id}"</span>?
+              <br />
+              <br />
+              This action cannot be undone. The job and all its associated resources will be permanently removed from the cluster.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          {/* Error message */}
+          {deleteError && (
+            <div className="rounded-md bg-red-50 border border-red-200 p-3 mt-2">
+              <p className="text-sm text-red-700">{deleteError}</p>
+            </div>
+          )}
+          
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel} disabled={deleting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Job
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
