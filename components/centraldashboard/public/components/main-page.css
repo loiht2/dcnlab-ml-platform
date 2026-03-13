@@ -5,11 +5,11 @@
 :host {
     @apply --layout-vertical;
     --accent-color: #007dfc;
-    --primary-background-color: #0F2034;
-    --sidebar-default-color: #ffffff;
+    --primary-background-color: #ffffff;
+    --sidebar-default-color: #202124;
     --divider-color: #dadce0;
     --border-color: #eeeeef;
-    --icon-color: #ffffff;
+    --icon-color: #202124;
     --external-icon-color: var(--google-grey-700);
     --iframe-link: {
         text-decoration: none;
@@ -40,7 +40,7 @@
 }
 
 #MainDrawer {
-    color: #ffffff;
+    color: #202124;
     --app-drawer-content-container: {
         background: var(--primary-background-color) !important;
         display: flex !important;
@@ -125,7 +125,7 @@ app-drawer-layout[narrow] #MainDrawer {
 }
 
 #MainDrawer .menu-item:hover {
-    background: #1a3550
+    background: #f1f3f4
 }
 
 #MainDrawer .iron-selected {
