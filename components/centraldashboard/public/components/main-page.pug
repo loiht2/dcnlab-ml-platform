@@ -68,7 +68,7 @@ app-drawer-layout.flex(narrow='{{narrowMode}}',
                     iron-icon.external(icon="launch")
         footer.footer
             section.build
-                span(style='color: #202124; font-weight: 500;') Distributed Cloud and Networking Lab - 2025
+                span(style='color: #202124; font-weight: 500;') © 2026 CNLab. All rights reserved.
                 //- |
                 //- span(title="Build: [[buildVersion]] | Dashboard: v[[dashVersion]] | Isolation-Mode: [[isolationMode]]")
                 //-     | [[buildVersion]]
@@ -107,7 +107,7 @@ app-drawer-layout.flex(narrow='{{narrowMode}}',
                                 iframe#MonitoringIframe(src='[[_buildMonitoringUrl(queryParams.ns, monitoringUrl, monitoringCluster)]]', style='width: 100%; height: calc(100vh - 220px); border: none;')
                         template(is='dom-if', if='[[!monitoringUrl]]')
                             div(style='text-align: center; padding: 60px 20px;')
-                                h2 Welcome to DCNLab Central Dashboard
+                                h2 Welcome to CNLab Central Dashboard
                                 p Please configure monitoring settings in the centraldashboard-config ConfigMap to display monitoring dashboards.
                 neon-animatable(page='activity')
                     activity-view(namespace='[[queryParams.ns]]')
