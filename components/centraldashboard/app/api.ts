@@ -102,7 +102,10 @@ export class Api {
             const cm = await this.k8sService.getConfigMap();
             let settings = {};
             try {
-              settings=JSON.parse(cm.data["settings"]);
+              settings = JSON.parse(cm.data['settings'] || '{}');
+              const accountSettings = JSON.parse(
+                  cm.data['account_settings'] || '{}');
+              settings = Object.assign(settings, accountSettings);
             }catch(e){
               return apiError({
                 res, code: 500,

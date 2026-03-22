@@ -8,6 +8,10 @@ data:
       "MONITORING_TITLE": "Dashboard",
       "MONITORING_DESCRIPTION": "View your current resource usage."
     }
+  account_settings: |-
+    {
+      "BASE_URL": "http://192.168.40.245:32008/realms/ml-platform/account/account-security/signing-in"
+    }
   links: |-
     {
         "menuLinks": [

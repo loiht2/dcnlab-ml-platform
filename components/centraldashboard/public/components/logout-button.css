@@ -1,3 +1,27 @@
+:host {
+    display: inline-flex;
+    align-items: center;
+}
+
+.buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 a {
     color: unset;
+    display: inline-flex;
+    text-decoration: none;
+}
+
+paper-button {
+    margin: 0;
+    min-width: 0;
+    padding: 18px;
+}
+
+iron-icon {
+    width: 30px;
+    height: 30px;
 }

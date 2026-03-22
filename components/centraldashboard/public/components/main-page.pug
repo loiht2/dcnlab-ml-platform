@@ -87,7 +87,8 @@ app-drawer-layout.flex(narrow='{{narrowMode}}',
                     all-namespaces='[[allNamespaces]]',
                     user='[[user]]')
                 footer#User-Badge
-                    logout-button(logout-url='[[logoutUrl]]')
+                    logout-button(logout-url='[[logoutUrl]]',
+                        account-base-url='[[accountBaseUrl]]')
         main#Content
             section#ViewTabs(hidden$='[[hideTabs]]', style='display: none;')
                 paper-tabs(selected='[[page]]', attr-for-selected='page')

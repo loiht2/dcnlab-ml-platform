@@ -120,6 +120,7 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
             monitoringCluster: {type: String, value: ''},
             monitoringTitle: {type: String, value: 'Monitoring Dashboard'},
             monitoringDescription: {type: String, value: ''},
+            accountBaseUrl: {type: String, value: ''},
         };
     }
 
@@ -364,6 +365,9 @@ export class MainPage extends utilitiesMixin(PolymerElement) {
         }
         if (settings.MONITORING_DESCRIPTION) {
             this.monitoringDescription = settings.MONITORING_DESCRIPTION;
+        }
+        if (settings.BASE_URL) {
+            this.accountBaseUrl = settings.BASE_URL;
         }
     }
 
